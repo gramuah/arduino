@@ -18,15 +18,15 @@
   #define MOT_L_PWM_PIN 12
   #define MOT_L_A_PIN 26
   #define MOT_L_B_PIN 22
-  //#define MOT_L_ENC_A_PIN 3
-  #define MOT_L_ENC_B_PIN 3//52
+  #define MOT_L_ENC_A_PIN 21
+  #define MOT_L_ENC_B_PIN 3
 
 //R Motor
   #define MOT_R_PWM_PIN 11
   #define MOT_R_A_PIN 28
   #define MOT_R_B_PIN 24
-  //#define MOT_R_ENC_A_PIN 2
-  #define MOT_R_ENC_B_PIN 2//50
+  #define MOT_R_ENC_A_PIN 20
+  #define MOT_R_ENC_B_PIN 2
 
 //LED
   #define LED 13
