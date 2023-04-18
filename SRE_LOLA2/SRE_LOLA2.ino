@@ -1,94 +1,85 @@
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//                                            DIFFERENTIAL ROBOT FIRMWARE                                            //
+//                                      DEVELOPED AT THE UNIVERSITY OF ALCALÁ                                        //
+// You can find more information at: www.hindawi.com/journals/js/2019/8269256/?utm_medium=author&utm_source=Hindawi  //
+//                                              Please include reference                                             //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+//SRE_LOLA
+
 #include "lola_board.h"
 
-#define VERSION "V1.03"
-
 #define IGNORE_PULSE   1400 // time in micros to ignore encoder pulses if faster
-
-//#include <mcp2515.h>
-//MCP2515 mcp2515(53);
-
-
+// Direction of movement
+unsigned char dir_right,dir_left;
 unsigned char velIZQ,velDER;
 unsigned char flag_move_motor=0;
+unsigned int veloc_right;
+unsigned int veloc_left;
 
+// Auxiliar variables to keep micros() at encoders
+unsigned long tr,tl;
+// Auxiliar variables to filter false impulses from encoders
+volatile unsigned long auxr=0,auxl=0;
+// Variables to keep each encoder pulse
+volatile unsigned int encoderIZQ = 0, encoderDER = 0;
+unsigned int aux_encoderIZQ = 0, aux_encoderDER = 0;
 
+volatile signed int encoder = 0;
+// Indicate the PWM that is applied to the motors
 unsigned int SPEED_INI_L=255;  // 170
 unsigned int SPEED_INI_R=255;  // 100
 unsigned int SPEED_INI_L_LIM=255;  // 170
 unsigned int SPEED_INI_R_LIM=255;  // 100
-
-unsigned int veloc_right;
-unsigned int veloc_left;
-
-
-// Direction of movement
-unsigned char dir_right,dir_left;
-
-// Variables to keep each encoder pulse
-volatile unsigned int encoderIZQ = 0, encoderDER = 0;
-
-//These variables keep track of the pulses received with a delay shorter than IGNORE_PULSE1 microseconds
-volatile unsigned int ignored_left = 0, ignored_right = 0;
-
-// Variables to obtain robot position and orientation (X, Y Theta)
-unsigned int aux_encoderIZQ = 0, aux_encoderDER = 0;
-volatile signed int encoder = 0;
-//unsigned long pulsesDER=0;
-//unsigned long pulsesIZQ=0;
-
-// Auxiliar variables to filter false impulses from encoders
-volatile unsigned long auxr=0,auxl=0;
-// Auxiliar variables to keep micros() at encoders
-unsigned long tr,tl;
-
-// Indicate the PWM that is applied to the motors
 int velr = SPEED_INI_R;
 int vell = SPEED_INI_L;
 int error = 0;
 int encoder_ant;
-
-// Keeps the last measurement taken by the ultrasound sensors
-int dist_us_sensor_central = 0;
-int dist_us_sensor_left = 0;
-int dist_us_sensor_right = 0;
-int dist_us_sensor_back = 0;
-
-unsigned char vigila_patrol=0;
-unsigned char estado_patrol=0;
-
-#define PATROL_REPOSO   0
-#define PATROL_RECTO    1
-#define PATROL_SEPARA   2
-
 // FSM's STATES
 unsigned char STATE = 0;
 #define RESET_STATE          0
-#define ROTATE_CCW_STATE    2
-#define ROTATE_CW_STATE     3
-#define MOVE_STRAIGHT_STATE 4
-#define RIGHT_FASTER_STATE  5
-#define LEFT_FASTER_STATE   6
-#define CIRC_TEST_R_STATE   7
-#define CIRC_TEST_L_STATE   8
-#define PATROL_STATE        9
 #define MOVE_DIF_SPEED     10
-#define CAN_STATE          11
-#define BOTON_STATE        12
-#define JOY_STATE        13
 
-void setup() {
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+#define PASOS_POR_VUELTA 712.6
+//Fijamos Kdato para velocidad de 3,5 rad/s a 127 (maxima
+#define Kdato 36.28
 
-  //struct can_frame canMsg1;
-  //mcp2515.reset();
-//  mcp2515.setBitrate(CAN_125KBPS);
-  //mcp2515.setBitrate(CAN_1000KBPS, MCP_8MHZ);
-//  mcp2515.setBitrate(CAN_1000KBPS);
-  //mcp2515.setNormalMode();
-  
+unsigned long atr = 0;
+int encoderIZQ_aux_can = 0;
+int encoderDER_aux_can = 0;
+long encoderAAbs = 0, tAabs;
+long encoderBAbs = 0, tBabs;
+
+//////////////////////////////////
+//      ERROR VARIABLE          //
+// IDENTIFICATION ERRORS CODES  //
+//////////////////////////////////
+unsigned char ERROR_CODE = 0;
+#define NO_ERROR              0
+#define NO_NUMBER             1   // Waiting for a number, time-out
+#define OUT_RANGE             2   // Received number out of range
+#define SPEED_OUT_RANGE       3   // Received speed out of range
+#define RR_OUT_RANGE          4   // Radio Ratio out of range
+#define NO_AVAILABLE          5   // Received Command non available
+#define INERTIA_LIMIT_ERROR   6   // Distance lower than inertia limit
+
+char order[1];
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// FUNCION: SETUP
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void setup() 
+{ 
   // Add the interrupt lines for encoders
-  attachInterrupt(digitalPinToInterrupt(MOT_R_ENC_B_PIN), cuentaDER, CHANGE);
-  
-  attachInterrupt(digitalPinToInterrupt(MOT_L_ENC_B_PIN), cuentaIZQ, CHANGE);
+//  attachInterrupt(digitalPinToInterrupt(MOT_R_ENC_B_PIN), cuentaDER, CHANGE);
+//  attachInterrupt(digitalPinToInterrupt(MOT_L_ENC_B_PIN), cuentaIZQ, CHANGE);
+  attachInterrupt(0, cuentaDER, CHANGE);
+  attachInterrupt(1, cuentaIZQ, CHANGE);
 
   //Battery pin for voltaje measurement
   pinMode(BAT_PIN,         INPUT);
@@ -160,43 +151,29 @@ void setup() {
   analogWrite(MOT_R_PWM_PIN, 0);
   analogWrite(MOT_L_PWM_PIN, 0);
 
-  Serial2.begin(38400);      //init the serial port
-//  Serial.begin(38400);      //init the serial port
   Serial.begin(115200);      //init the serial port
   
-  if(digitalRead(SW5_PIN)==LOW)
-  {
-  Serial2.print("LOLA INI ");
-  Serial2.println(VERSION);
-  Serial2.println("Seleccione mediante el SWITCH de la placa un modo de funcionamiento");
-  }
-  else 
-  { 
   Serial.print("LOLA INI ");
-  //Serial.println(VERSION);
-  //Serial.println("Seleccione mediante el SWITCH de la placa un modo de funcionamiento");
-  }
 }  // End of setup()
 
 
 //////////////////////////////////////////////////
+// FUNCION: cuentaDER()
 //  Right encoder interrupt using only one pin
 //////////////////////////////////////////////////
 void cuentaDER()
 {
   tr=micros();
   // if pulse is too fast from previoius is ignored
-//    Serial.println(tr-auxr);
   if (tr-auxr>(unsigned long)IGNORE_PULSE)
-  {
-    
+  {    
     auxr=tr;
     encoderDER++;    //Add one pulse
-  }
-  
+  }  
 }  // end of cuentaDER
 
-//////////////////////////////////////////////////
+///////////////////////////////////////////////////
+// FUNCION: cuentaIZQ()
 //  Left encoder interrupt using only one pin
 //////////////////////////////////////////////////
 void cuentaIZQ()
@@ -212,6 +189,7 @@ void cuentaIZQ()
 
 
 ///////////////////////////////////////////
+// FUNCION: move_motors()                //
 //              MOVE MOTORS              //
 //  dir_right (1: foward / 0: backwards) //
 //  dir_left  (1: foward / 0: backwards) //
@@ -222,9 +200,9 @@ void move_motors()
   // Adaptation for L298n
   unsigned int inhib_r = 0xBB, inhib_l = 0xEE;
 
-  encoderIZQ = ignored_left = aux_encoderIZQ ;
-  encoderDER =  ignored_right =  aux_encoderDER; 
-  
+  // When starting reset all the encoders
+  encoderIZQ =  aux_encoderIZQ ;
+  encoderDER =  aux_encoderDER;   
   encoder = encoder_ant = 0;
 
   //Deactivate both motor's H-bridge
@@ -260,12 +238,10 @@ void move_motors()
   else
     PORTA |= 0x50 & inhib_r & inhib_l;
     
-//  Serial.println("move_motors");
-
 }  // End of move_motors()
 
-
 ///////////////////
+// FUNCION: stop_motors()
 //  STOP_MOTORS  //
 ///////////////////
 void stop_motors() 
@@ -275,99 +251,10 @@ void stop_motors()
   //We will fix the same duty cycle for the PWM outputs to make the braking spped equal!
   analogWrite(MOT_R_PWM_PIN, 255);
   analogWrite(MOT_L_PWM_PIN, 255);
-  //delay(300);                             ////////////////////////////////////////////////////////////////////////////////////////////////////////
 }  // End of stop_motors()
 
-/////////////////////////////////////////////////
-//         ULTRA SOUND RANGE DETECTOR          //
-//  Return ->  -1:   Distance above 3m         //
-//              0:   No return pulse detected  //
-//            (int): Distance in cm            //
-//                                             //
-// Inputs -> TriggerPin                        //
-//           EchoPin                           //
-/////////////////////////////////////////////////
-int us_range(int TriggerPin, int EchoPin) {
-   long duration, distanceCm;
-   
-   digitalWrite(TriggerPin, LOW);   // Keep the line LOW for 4us for a clean flank
-   delayMicroseconds(4);
-   digitalWrite(TriggerPin, HIGH);  // Generate a high transition
-   delayMicroseconds(10);
-   digitalWrite(TriggerPin, LOW);   // After 10us, lower the line
-
-   // Measure the duration in microseconds
-   // Must be taken into account that this implies a delay of 10ms if no return is detected.
-   duration = pulseIn(EchoPin, HIGH, 10000);
-
-   // Check this number
-   distanceCm = duration / 58.2;  // Convert the distance to cm
-
-  if (vigila_patrol==1)
-  {
-    // Si algún sensor tiene dist. inferior a seguridad, se para
-    // y se vuelve a reposo en el autómata del arduino y en el de
-    // patrulla. 
-    if (distanceCm<15 && distanceCm>0)
-    {
-//      SERIA.println("Comand P5");
-      stop_motors();
-      estado_patrol=PATROL_REPOSO;
-      STATE=RESET_STATE;
-
-    }
-  }
-   if (distanceCm == 0)
-    return 200;
-
-   if (distanceCm < 199)
-    return distanceCm;
-  else
-    return 200;
-}  // End of us_range()
-
-
-////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
-void US_sensor_read_sequence()
-{
-  static unsigned char us_sensor = 0;
-  // Sequence to read the ultra-sound sensors. 
-  // In each iteration one sensor is read. 
-  // We must take into account that we get a
-  // delay by reading the ultra-sound sensor...
-//  if (us_sensor == 0)
-    dist_us_sensor_central = us_range(F_US_TRIG, F_US_ECHO);
-//  else if (us_sensor == 1)
-    dist_us_sensor_left = us_range(L_US_TRIG, L_US_ECHO);
-//  else if (us_sensor == 2)
-    dist_us_sensor_right = us_range(R_US_TRIG, R_US_ECHO);
-//  else if (us_sensor == 3)
-    dist_us_sensor_back = us_range(B_US_TRIG, B_US_ECHO);
-//  if (++us_sensor == 4)
-//    us_sensor = 0;
-}  // end of US_sensor_sequence()
-
-
-////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////
-void disp_lect_sensores()
-{
-  static char str[50];
-      sprintf(str,"US: %03d %03d %03d %03d ", dist_us_sensor_central,
-                                              dist_us_sensor_left,
-                                              dist_us_sensor_right,
-                                              dist_us_sensor_back);
-      if(digitalRead(SW5_PIN)==LOW)
-       Serial2.println(str);
-      else
-       Serial.println(str);
-
-}  // end of disp_lect_sensores()
-
-
-
-//  SPEED_NORMALIZATION
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// FUNCION: speed_normalization()
 //
 //  Speeds are normalized in order to work 
 //  at maximum speed give as SPEED_INI_X
@@ -376,17 +263,13 @@ void disp_lect_sensores()
 void speed_normalization()
 {
   if (velr>SPEED_INI_R)
-
-//    if (velr>vell)
     {
       vell -= (velr-SPEED_INI_R);
       velr = SPEED_INI_R;
       if (vell<0)
         vell=0;          
     }
-
   if (vell>SPEED_INI_L)
-//    else
     {
       velr -= (vell-SPEED_INI_L);
       vell = SPEED_INI_L;
@@ -395,54 +278,483 @@ void speed_normalization()
     }
 } // end of speed_normalization
 
-
-void loop() {
+///////////////////////////
+// FUNCION: void loop() 
+void loop() 
+{
   // put your main code here, to run repeatedly:
   STATE=RESET_STATE;
-  if(digitalRead(SW1_PIN)==LOW)
-   {
-       if(digitalRead(PIN_FORWARD)==LOW && digitalRead(PIN_BACKWARD)==LOW && digitalRead(PIN_LEFT)==LOW && digitalRead(PIN_RIGHT)==LOW)
-       {
-          if(digitalRead(SW5_PIN)==LOW)
-            Serial2.println("MODO SRE_Joystick");
-          else
-            Serial.println("MODO SRE_Joystick");
-          SRE_Joystick();
-       }
-       else 
-       { 
-          if(digitalRead(SW5_PIN)==LOW)
-            Serial2.println("MODO SRE_BOTONES");
-          else
-            Serial.println("MODO SRE_BOTONES");
-          STATE=RESET_STATE;
-          SRE_Botones2();
-       }
-   }
-  else if(digitalRead(SW2_PIN)==LOW)
-   {
-       if(digitalRead(SW5_PIN)==LOW)
-       Serial2.println("MODO BOTONES_ANT");
-       else
-       Serial.println("MODO BOTONES_ANT");
-       SRE_Botones2();
-   }
-  else if(digitalRead(SW3_PIN)==LOW)
-   {
-       if(digitalRead(SW5_PIN)==LOW)
-       Serial2.println("MODO ROBOT");
-       else
-       Serial.println("MODO ROBOT");
-       Lola();
-   }   
-  else if(digitalRead(SW4_PIN)==LOW)
-   {
-       
-       if(digitalRead(SW5_PIN)==LOW)
-       Serial2.println("MODO LOLA_VALIDATOR");
-       else
-       Serial.println("MODO LOLA_VALIDATOR");
-       //print_message();
-       //Lola_Validate();
-   }
-}
+  Lola();
+}  // end of loop()
+
+///////////////////////////////////////////
+// FUNCION:  READ_NUMBER                 //
+//  Read a number from the serial port with <number> digits  //
+///////////////////////////////////////////////////////////////
+short int read_number(int n_digits) {
+  char speed[8];
+
+  // Wait to be sure the bytes have arrived
+  delay(5);
+  //  sprintf(speed,"%d",SERIA.available());
+  //  SERIA.println(speed);
+  if (digitalRead(SW5_PIN) == LOW) {
+    if (Serial2.available() > n_digits - 1)
+    {
+      Serial2.readBytes(speed, n_digits);
+      speed[n_digits] = '\0';  // Append a NULL character to terminate the string! Not needed if initialized with char speed[5] = {0}...
+      //      SERIA.println(speed);
+
+      return (unsigned int) atoi(speed);
+    }
+    else
+    {
+      ERROR_CODE = NO_NUMBER;
+      return 0;
+    }
+  }
+  else {
+    if (Serial.available() > n_digits - 1)
+    {
+      Serial.readBytes(speed, n_digits);
+      speed[n_digits] = '\0';  // Append a NULL character to terminate the string! Not needed if initialized with char speed[5] = {0}...
+      //      SERIA.println(speed);
+
+      return (unsigned int) atoi(speed);
+    }
+    else
+    {
+      ERROR_CODE = NO_NUMBER;
+      return 0;
+    }
+  }
+}  // End of read_number()
+
+///////////////////////////////////////////
+// FUNCION:   ANALYZE_ORDER              //
+// Parse command information and trigger //
+// all the necessary functions           //
+///////////////////////////////////////////
+void analyze_order() {
+  char str[35];
+  float s, sl, sr;
+  int num, n;
+
+  switch (order[0])
+  {
+    case   'V':
+      velDER = read_number(3);
+      velIZQ = read_number(3);
+
+      if (velDER == 255)
+        velDER = 254;
+      if (velIZQ == 255)
+        velIZQ = 254;
+
+      if (STATE == RESET_STATE)
+      {
+        flag_move_motor = 1;
+        SPEED_INI_R = SPEED_INI_L = 128;
+      }
+
+      if (velDER == 0  && velIZQ == 0 )
+      {
+        STATE = RESET_STATE;
+        stop_motors();
+        return;
+      }
+      else
+        STATE = MOVE_DIF_SPEED;
+      movimientos_vel();
+      break;
+
+    // Stop motors and calcucompute the new positions
+    case 0x3F: // '?'
+      stop_motors();
+      STATE = RESET_STATE;
+      break;
+
+    // The error is sent back by adding 0x30 to the error code
+    case 0x45: // 'E'
+      if (digitalRead(SW5_PIN) == LOW) {
+        Serial2.write(0x45);  // 'E'
+        Serial2.write(0x30 + ERROR_CODE);
+        Serial2.println("");
+      }
+      else {
+        Serial.write(0x45);  // 'E'
+        Serial.write(0x30 + ERROR_CODE);
+        Serial.println("");
+      }
+      break;
+    case 'Q': // 'Q'
+      if (digitalRead(SW5_PIN) == LOW) {
+        Serial2.print("\nQ:");
+        Serial2.print(encoderIZQ);
+        Serial2.print(" ");
+        Serial2.println(encoderDER);
+      }
+      else {
+        Serial.print("\nQ:");
+        Serial.print(encoderIZQ);
+        Serial.print(" ");
+        Serial.println(encoderDER);
+      }
+      break;
+
+    case 'N': //'N'    Datos de los encoders en valor absoluto
+      enviar_datos_encoder();
+      break;
+
+    default:
+      ERROR_CODE = NO_AVAILABLE;
+  }
+}  // End of analyze_order()
+
+///////////////////////////////////////////
+// FUNCION: void update_speeds(unsigned char reset)
+// This function perform a PID for speeds control:
+// The global variables with the objective speeds are:
+//          veloc_right
+//          veloc_left
+//
+// The global variables with the speed limits are:
+//          SPEED_INI_R
+//          SPEED_INI_L
+
+// Input parameter:
+//  unsigned char reset, if reset==1 the initial values are set in variables.
+////////////////////////////////////////////////////////////////////////
+void update_speeds(unsigned char reset)
+{
+  static unsigned int encI_aux = 0, encD_aux = 0;
+  unsigned int temp_encDER, temp_encIZQ;
+  float aux_floatDER, aux_floatIZQ;
+  unsigned long t;
+  long tiempo;
+
+  float errorD, errorI;
+  static float ant_errorD = 0, ant_errorI = 0;
+
+  unsigned int real_vI, real_vD;
+
+  static float KP = (float)0.3; //0.7
+  static float KD = (float)0.5; // 1
+
+  if (reset == 1)
+  {
+    encI_aux = encoderIZQ;
+    encD_aux = encoderDER;
+    ant_errorD = 0;
+    ant_errorI = 0;
+    atr = micros();
+    return;
+  }
+
+  tr = micros();
+  tiempo = (long)tr - (long)atr;
+  if (tiempo < 90000)
+    return;
+  atr = tr;
+
+  actualizar_encoder_abs();
+
+  temp_encDER = encoderDER;
+  temp_encIZQ = encoderIZQ;
+
+  real_vD = (unsigned int) ((float)temp_encDER - (float)encD_aux) / ((float)tiempo / (float)1000000);
+  real_vI = (unsigned int) ((float)temp_encIZQ - (float)encI_aux) / ((float)tiempo / (float)1000000);
+
+  encD_aux = temp_encDER;
+  encI_aux = temp_encIZQ;
+  
+  aux_floatDER = (float)veloc_right - (float)real_vD;
+  aux_floatIZQ = (float)veloc_left  - (float)real_vI;
+
+  errorD = ant_errorD - aux_floatDER;
+  errorI = ant_errorI - aux_floatIZQ;
+  ant_errorD = aux_floatDER;
+  ant_errorI = aux_floatIZQ;
+
+  // Implement PID (just PD)
+  aux_floatDER = (float) aux_floatDER * KP - (float) errorD * KD;
+  aux_floatIZQ = (float) aux_floatIZQ * KP - (float) errorI * KD;
+
+  // Redondeos al entero ms cercano
+  if (aux_floatDER > 0)     aux_floatDER += 0.5;
+  if (aux_floatDER < 0)     aux_floatDER -= 0.5;
+  if (aux_floatIZQ > 0)     aux_floatIZQ += 0.5;
+  if (aux_floatIZQ < 0)     aux_floatIZQ -= 0.5;
+
+  if ((velr + aux_floatDER) < 0)
+    velr = 0;
+  else
+    velr += (int)aux_floatDER;
+  if ((vell + aux_floatIZQ) < 0)
+    vell = 0;
+  else
+    vell += (int)aux_floatIZQ;
+
+  if (velr < 0)
+    velr = 0;
+  if (vell < 0)
+    vell = 0;
+  if (velr > SPEED_INI_R)
+    velr = SPEED_INI_R;
+  if (vell > SPEED_INI_L)
+    vell = SPEED_INI_L;
+
+    if (vell > SPEED_INI_L || velr > SPEED_INI_R)
+    {
+      speed_normalization();
+    }
+
+  // Write, as PWM duty cycles, the speeds for each wheel
+  analogWrite(MOT_R_PWM_PIN, velr);
+  analogWrite(MOT_L_PWM_PIN, vell);
+
+}  // fin de void update_speeds()
+
+///////////////////////////////////////////
+// FUNCION: void actualizar_encoder_abs()
+void actualizar_encoder_abs()
+{
+  if (dir_left == 0)
+  {
+    encoderIZQ_aux_can = (long)encoderIZQ_aux_can - (long)encoderIZQ;
+    encoderAAbs = (long)encoderAAbs + (long)encoderIZQ_aux_can;
+    encoderIZQ_aux_can = encoderIZQ;
+  }
+  else
+  {
+    encoderIZQ_aux_can = (long)encoderIZQ_aux_can - (long)encoderIZQ;
+    encoderAAbs = (long)encoderAAbs - (long)encoderIZQ_aux_can;
+    encoderIZQ_aux_can = encoderIZQ;
+  }
+  if (dir_right == 0)
+  {
+    encoderDER_aux_can = (long)encoderDER_aux_can - (long)encoderDER;
+    encoderBAbs = (long)encoderBAbs + (long)encoderDER_aux_can;
+    encoderDER_aux_can = encoderDER;
+  }
+  else
+  {
+    encoderDER_aux_can = (long)encoderDER_aux_can - (long)encoderDER;
+    encoderBAbs = (long)encoderBAbs - (long)encoderDER_aux_can;
+    encoderDER_aux_can = encoderDER;
+  }
+}  // fin actualizar_encoder_abs
+
+///////////////////////////////////////////
+// FUNCION: void movimientos_vel()
+void movimientos_vel()
+{
+  actualizar_encoder_abs();
+
+  if (velDER == 0)
+  {
+    if (veloc_right != 0)
+    {
+      stop_motors();
+      flag_move_motor = 1;
+    }
+    veloc_right = 0;
+    dir_right = 0;
+  }
+  else if (velDER < 128)
+  {
+    if (dir_right == 0)
+    {
+      stop_motors();
+      flag_move_motor = 1;
+    }
+    //veloc_right=10+280*(unsigned int)velDER/128;
+    veloc_right=(unsigned int)(PASOS_POR_VUELTA*velDER/(2*PI*Kdato)+0.5);
+
+    dir_right = 1;
+  }
+  else
+  {
+    if (dir_right == 1)
+    {
+      stop_motors();
+      flag_move_motor = 1;
+    }
+    //velr=255+127-velDER;
+    velDER = 256 - velDER;
+    //veloc_right=10+280*(unsigned int)velDER/128;
+    veloc_right=(unsigned int)(PASOS_POR_VUELTA*velDER/(2*PI*Kdato)+0.5);
+
+    dir_right = 0;
+  }
+
+  if (velIZQ == 0)
+  {
+    if (veloc_left != 0)
+    {
+      stop_motors();
+      flag_move_motor = 1;
+    }
+    veloc_left = 0;
+    dir_left = 0;
+  }
+  else if (velIZQ < 128)
+  {
+    if (dir_left == 0)
+    {
+      stop_motors();
+      flag_move_motor = 1;
+    }
+    //veloc_left=10+280*(unsigned int)velIZQ/128;
+    veloc_left=(unsigned int)(PASOS_POR_VUELTA*velIZQ/(2*PI*Kdato)+0.5);
+    dir_left = 1;
+  }
+  else
+  {
+    if (dir_left == 1)
+    {
+      stop_motors();
+      flag_move_motor = 1;
+    }
+    //vell=255+127-velIZQ;
+    velIZQ = 256 - velIZQ;
+    //veloc_left=10+280*(unsigned int)velIZQ/128;
+    veloc_left=(unsigned int)(PASOS_POR_VUELTA*velIZQ/(2*PI*Kdato)+0.5);
+    dir_left = 0;
+  }
+  
+  if (veloc_left == 0)
+    SPEED_INI_L = 0;
+  //  else
+  //    SPEED_INI_L=255;
+  if (veloc_right == 0)
+    SPEED_INI_R = 0;
+  //  else
+  //    SPEED_INI_R=255;
+
+  if (flag_move_motor == 1)
+  {
+    move_motors();
+    //    Serial.print(" Reset movimiento ");
+    flag_move_motor = 0;
+  }
+  update_speeds(1);
+
+} // fin de movimientos_vel()
+
+///////////////////////////////////////////
+// FUNCION: Enviar datos encoder
+/////////////////////////////////////////////////////////////////////
+void enviar_datos_encoder() 
+{
+  byte byte_auxiliar[4];
+
+  actualizar_encoder_abs();
+  tAabs = micros();
+  tBabs = micros();
+
+  byte_auxiliar[3] = (encoderAAbs & 0xFF000000) >> 24;
+  byte_auxiliar[2] = (encoderAAbs & 0x00FF0000) >> 16;
+  byte_auxiliar[1] = (encoderAAbs & 0x0000FF00) >> 8;
+  byte_auxiliar[0] = (encoderAAbs & 0x000000FF);
+
+  Serial.println("N");   ///// Se manda una 'N'
+
+  //Serial.print("N ");
+  //Serial.print("  ");
+
+  Serial.write(byte_auxiliar, 4);
+
+   //DEBUG
+  //Serial.print(" Dep EncoderIZDO: ");
+  //Serial.print(encoderAAbs);
+  //Serial.print("  ");
+  //Serial.print(" Tiempo Izdo: ");
+  //Serial.println(tAabs);
+    // FIN DEBUG
+
+  byte_auxiliar[3] = (tAabs & 0xFF000000) >> 24;
+  byte_auxiliar[2] = (tAabs & 0x00FF0000) >> 16;
+  byte_auxiliar[1] = (tAabs & 0x0000FF00) >> 8;
+  byte_auxiliar[0] = (tAabs & 0x000000FF);
+
+  Serial.write(byte_auxiliar, 4);
+
+   //DEBUG
+  //Serial.print("  Dep tAABS: ");
+  //Serial.print(tAabs);
+  //Serial.print("  ");
+  // FIN DEBUG
+
+  byte_auxiliar[3] = (encoderBAbs & 0xFF000000) >> 24;
+  byte_auxiliar[2] = (encoderBAbs & 0x00FF0000) >> 16;
+  byte_auxiliar[1] = (encoderBAbs & 0x0000FF00) >> 8;
+  byte_auxiliar[0] = (encoderBAbs & 0x000000FF);
+
+  Serial.write(byte_auxiliar, 4);
+
+  //DEBUG
+  //Serial.print(" EncoderDCHO: ");
+  //Serial.print(encoderBAbs);
+  //Serial.print("  ");
+  //Serial.print(" Tiempo dcho: ");
+  //Serial.println(tBabs);
+  //Serial.print("  ");
+ // FIN DEBUG
+
+  byte_auxiliar[3] = (tBabs & 0xFF000000) >> 24;
+  byte_auxiliar[2] = (tBabs & 0x00FF0000) >> 16;
+  byte_auxiliar[1] = (tBabs & 0x0000FF00) >> 8;
+  byte_auxiliar[0] = (tBabs & 0x000000FF);
+
+  Serial.write(byte_auxiliar, 4);
+   //DEBUG
+  //Serial.print("  Dep tBABS: ");
+  //Serial.print(tBabs);
+  // FIN DEBUG
+  Serial.println("P");   ///// Se manda una 'P'
+
+}  //// Fin enviar los datos de los encoders
+
+///////////////////////////////////////////
+// FUNCION:  Lola                        //
+// Loop function                         //
+///////////////////////////////////////////
+void Lola()
+{
+  unsigned int auxiliar_uns_int;
+  while (1)
+  {
+    if (Serial.available() > 0)
+      {
+        order[0] = 'Z';
+        Serial.readBytes(order, 1);
+        // Every time a command is going to be reveived the error is reset if it's not asking for an error code
+        if (order[0] != 'E')
+          ERROR_CODE = NO_ERROR;
+        analyze_order();
+      }
+    
+    // Each state performs a different movement
+    switch (STATE)
+    {
+      case   RESET_STATE:      
+        // Just in case an error produced the movement of the motors
+        stop_motors();
+        break;
+      case MOVE_DIF_SPEED:
+        auxiliar_uns_int=(int)((float)SPEED_INI_L*1.1);
+        if (auxiliar_uns_int>SPEED_INI_L_LIM)
+          SPEED_INI_L=SPEED_INI_L_LIM;
+        else
+          SPEED_INI_L=auxiliar_uns_int;
+        SPEED_INI_R=SPEED_INI_L;
+            
+        // PID for speeds update
+        update_speeds(0);
+        break;
+      default:
+        break;
+    } // End of switch (STATE)
+  } // End of while(1)
+} // End of loop
