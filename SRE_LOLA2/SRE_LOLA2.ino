@@ -652,7 +652,7 @@ void enviar_datos_encoder()
   actualizar_encoder_abs();
   tAabs = micros();
   tBabs = micros();
-
+  
   byte_auxiliar[3] = (encoderAAbs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (encoderAAbs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (encoderAAbs & 0x0000FF00) >> 8;
@@ -664,15 +664,19 @@ void enviar_datos_encoder()
   //Serial.print("  ");
 
   Serial.write(byte_auxiliar, 4);
+  
 
-   //DEBUG
-  //Serial.print(" Dep EncoderIZDO: ");
-  //Serial.print(encoderAAbs);
-  //Serial.print("  ");
-  //Serial.print(" Tiempo Izdo: ");
-  //Serial.println(tAabs);
-    // FIN DEBUG
+  /*
+  //DEBUG
+  Serial.print(" Dep EncoderIZDO: ");
+  Serial.print(encoderAAbs);
+  Serial.print("  ");
+  Serial.print(" Tiempo Izdo: ");
+  Serial.println(tAabs);
+  // FIN DEBUG
+  */
 
+ 
   byte_auxiliar[3] = (tAabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tAabs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (tAabs & 0x0000FF00) >> 8;
@@ -693,14 +697,18 @@ void enviar_datos_encoder()
 
   Serial.write(byte_auxiliar, 4);
 
-  //DEBUG
-  //Serial.print(" EncoderDCHO: ");
-  //Serial.print(encoderBAbs);
-  //Serial.print("  ");
-  //Serial.print(" Tiempo dcho: ");
-  //Serial.println(tBabs);
-  //Serial.print("  ");
- // FIN DEBUG
+
+/*
+//DEBUG
+Serial.print(" EncoderDCHO: ");
+Serial.print(encoderBAbs);
+Serial.print("  ");
+Serial.print(" Tiempo dcho: ");
+Serial.println(tBabs);
+Serial.print("  ");
+// FIN DEBUG
+*/
+
 
   byte_auxiliar[3] = (tBabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tBabs & 0x00FF0000) >> 16;
@@ -712,6 +720,7 @@ void enviar_datos_encoder()
   //Serial.print("  Dep tBABS: ");
   //Serial.print(tBabs);
   // FIN DEBUG
+
   Serial.println("P");   ///// Se manda una 'P'
 
 }  //// Fin enviar los datos de los encoders
