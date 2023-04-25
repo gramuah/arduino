@@ -70,12 +70,12 @@ typedef struct{
   // SetPoint: is de reference value
   // Output: is the control value
   double Input, SetPoint, Output;
-  double Kp=0.7, Ki=0.007, Kd=0.7;
+  double Kp=1.5, Ki=0.0001, Kd=0.0015;
   // Limits of saturation
   double top_limit_sat = 255.0;
   double bottom_limit_sat = 0.0;
   // Sample time
-  int ts = 100; // in ms
+  int ts = 50; // in ms
 }PID_right_motor_t;
 
 // Define the struct with the data from PID for Left Motor
@@ -84,12 +84,12 @@ typedef struct{
   // SetPoint: is de reference value
   // Output: is the control value  
   double Input, SetPoint, Output;
-  double Kp=0.7, Ki=0.007, Kd=0.7;
+  double Kp=1.5, Ki=0.0001, Kd=0.0015;
   // Limits of saturation
   double top_limit_sat = 255.0;
   double bottom_limit_sat = 0.0;
   // Sample time
-  int ts = 100; // in ms  
+  int ts = 50; // in ms  
 }PID_left_motor_t;
 
 // Create the variables 
@@ -98,8 +98,6 @@ action_t sel_action;
 error_t type_error;
 
 state_t state = RESET;
-
-char order[0];
 
 // Variables with the mechanical data motors
 right_motor_t MOT_R;
@@ -167,7 +165,57 @@ void setup()
 void loop() 
 {
   // put your main code here, to run repeatedly:
-  Lola();
+  // Capture the start time of cycle tasks
+  unsigned long t_start_tasks = millis();
+  char order[1];
+    
+  // Check if there is a byte in buffer reception from Serial Port
+  if (Serial.available() > 0)
+  {
+    //Serial.readBytes(order, 1);
+    Serial.readBytes(order, 1);
+    // Every time a command is going to be reveived the error is reset if it's not asking for an error code
+    if (order[0] != "E")
+      type_error = NO_ERROR;
+        
+    // Analyze the order received in the buffer reception from Serial Port
+    // 'V': command velocity
+    // '?': stop and reset
+    // 'E': an error occur
+    // 'Q': send the incremental data encoder
+    // 'N': send the data encoder (abs count encoder)        
+    analyze_order(order);
+  }
+    
+  // Each state performs a different movement
+  switch (state)
+  {
+    case RESET:      
+      // Just in case an error produced the movement of the motors
+      stop_motors();
+      // Reset the abs count value from encoders
+      MOT_R.encoderAbs = 0;
+      MOT_L.encoderAbs = 0;        
+    break;
+
+    case MOVE:
+      // Update the speeds
+      update_speeds_from_PID_controller(); 
+    break;
+
+    case STOP:
+      // Just in case an error produced the movement of the motors
+      stop_motors();
+    break;
+
+    default:
+    break;
+  } // End of switch (STATE)
+
+  // Delay
+  // This action avoid the effect of Jitter
+  delay(PID_MOT_R.ts - (millis() - t_start_tasks));
+
 }  // end of loop()
 
 
@@ -244,8 +292,8 @@ void select_sense_turning_motors(action_t type_action)
 ////////////////////////////
 void stop_motors(void) 
 {
-  PORTB |= 0x3 << 3;                              
-  PORTA &= 0xAA;
+  // PORTB |= 0x3 << 3;                              
+  // PORTA &= 0xAA;
   //We will fix the same duty cycle for the PWM outputs to make the braking spped equal!
   analogWrite(MOT_R_PWM_PIN, 0);
   analogWrite(MOT_L_PWM_PIN, 0);
@@ -333,86 +381,6 @@ short int read_speed(int n_digits)
   }
 }  // End of read_speed()
 
-///////////////////////////////////////////
-// FUNCION:   ANALYZE_ORDER              //
-// Parse command information and trigger //
-// all the necessary functions           //
-///////////////////////////////////////////
-void analyze_order(char order) 
-{
-
-  switch (order)
-  {
-    case 'V':
-
-      uint8_t velocity_right = read_speed(3);
-      uint8_t velocity_left =  read_speed(3);
-
-      // Check the value of velocity
-      if (velocity_right == 0 && velocity_left ==0)
-      {
-        // Stop the robot
-        state = STOP;          
-      } 
-
-      else
-      {      
-        // Refresh the state
-        state = MOVE;
-
-        // Check and refresh the global variable sel_action with the possible action from velocity received
-        sel_action = check_type_action(velocity_right, velocity_left);
-
-        // Update the pins control for L298N
-        select_sense_turning_motors(sel_action); 
-
-        // Normalize the velocities for wheels with the data received by Serial Port 
-        // and update the SetPoint for PID controller      
-        speed_normalization(velocity_right, velocity_left); 
-      }
-
-    break;
-
-    // Stop motors and calcucompute the new positions
-    case '?': // '?'
-      stop_motors();
-      Serial.print("Entrado a Reset");
-      state = RESET;
-    break;
-
-    // The error is sent back by adding 0x30 to the error code
-    case 'E': // 'E'
-      type_error = ERROR_CODE;
-
-      Serial.write(0x45);  // 'E'
-      Serial.write(0x30 + type_error);
-      Serial.println("");
-    break;
-
-    case 'Q': // 'Q'
-      
-      Serial.print("\nQ:");
-      Serial.print(MOT_L.encoderIZQ);
-      Serial.print(" ");
-      Serial.println(MOT_R.encoderDER);
-      
-    break;
-
-    case 'N': //'N'    Datos de los encoders en valor absoluto
-
-      Serial.println("Entrar a N");
-      send_data_encoder();
-    
-    break;
-
-    default:
-
-      Serial.print("Entrado a Default");
-      type_error = NO_AVAILABLE;
-    
-    break;
-  }
-}  // End of analyze_order()
 
 ////////////////////////////////////////////////////////////
 // FUNCION: void update_speeds_from_PID_controller(void)  //
@@ -434,6 +402,22 @@ void update_speeds_from_PID_controller(void)
   // Compute the PID controller
   PID_R.Compute();
   PID_L.Compute();
+
+  // DEBUG SERIAL PLOTTER
+  Serial.print("Max:");
+  Serial.print(255);
+  Serial.print(", ");
+  Serial.print("Min:");
+  Serial.print(0);
+  Serial.print(", ");
+  Serial.print("SetPoint_Right:");
+  Serial.print(PID_MOT_R.SetPoint);
+  Serial.print(", ");
+  Serial.print("Input_Right:");
+  Serial.print(PID_MOT_R.Input);
+  Serial.print(", ");
+  Serial.print("Output_Right:");
+  Serial.println(PID_MOT_R.Output);
 
   // Write, as PWM duty cycles, the speeds for each wheel
   analogWrite(MOT_R_PWM_PIN, PID_MOT_R.Output);
@@ -497,6 +481,7 @@ void send_data_encoder(void)
   unsigned long tBabs = micros();
   
   /*
+  // Data from Right Encoder
   byte_auxiliar[3] = (MOT_R.encoderAbs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (MOT_R.encoderAbs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (MOT_R.encoderAbs & 0x0000FF00) >> 8;
@@ -504,21 +489,9 @@ void send_data_encoder(void)
 
   Serial.println("N");              // Se manda una 'N'
 
-  //Serial.print("N ");
-  //Serial.print("  ");
-
   Serial.write(byte_auxiliar, 4);
-  */
-
-  //DEBUG
-  Serial.print(" Dep EncoderDCHA: ");
-  Serial.print(MOT_R.encoderAbs);
-  Serial.print("  ");
-  Serial.print(" Tiempo Dcha: ");
-  Serial.println(tAabs);
-  // FIN DEBUG
-
-  /*
+ 
+  // Data time for Right Encoder
   byte_auxiliar[3] = (tAabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tAabs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (tAabs & 0x0000FF00) >> 8;
@@ -526,100 +499,119 @@ void send_data_encoder(void)
 
   Serial.write(byte_auxiliar, 4);
 
-  //DEBUG
-  //Serial.print("  Dep tAABS: ");
-  //Serial.print(tAabs);
-  //Serial.print("  ");
-  // FIN DEBUG
-
+  // Data Send from Left Encoder
   byte_auxiliar[3] = (MOT_L.encoderAbs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (MOT_L.encoderAbs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (MOT_L.encoderAbs & 0x0000FF00) >> 8;
   byte_auxiliar[0] = (MOT_L.encoderAbs & 0x000000FF);
 
   Serial.write(byte_auxiliar, 4);
-  */
-
-  //DEBUG
-  Serial.print(" EncoderIZDA: ");
-  Serial.print(MOT_L.encoderAbs);
-  Serial.print("  ");
-  Serial.print(" Tiempo izda: ");
-  Serial.println(tBabs);
-  Serial.print("  ");
-  // FIN DEBUG
-
-  /*
+  
+  // Data time for Left Encoder
   byte_auxiliar[3] = (tBabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tBabs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (tBabs & 0x0000FF00) >> 8;
   byte_auxiliar[0] = (tBabs & 0x000000FF);
 
   Serial.write(byte_auxiliar, 4);
-  //DEBUG
-  //Serial.print("  Dep tBABS: ");
-  //Serial.print(tBabs);
-  // FIN DEBUG
+
+  Serial.println("P");   // Se manda una 'P'
   */
 
-  Serial.println("P");   ///// Se manda una 'P'
+  
+  //DEBUG
+  // Data from Right Encoder
+  Serial.print("EncoderDCHA: ");
+  Serial.print(MOT_R.encoderAbs);
+  Serial.print(", ");
+  Serial.print("Tiempo Dcha: ");
+  Serial.print(tAabs);
+
+  // Data from Left Encoder
+  Serial.print(", EncoderIZDA: ");
+  Serial.print(MOT_L.encoderAbs);
+  Serial.print(",  ");
+  Serial.print("Tiempo izda: ");
+  Serial.println(tBabs);
+  // FIN DEBUG
 
 }  // End of send_data_encoder
 
 ///////////////////////////////////////////
-// FUNCION:  Lola                        //
-// Loop function                         //
+// FUNCION:   ANALYZE_ORDER              //
+// Parse command information and trigger //
+// all the necessary functions           //
 ///////////////////////////////////////////
-void Lola(void)
+void analyze_order(char * order) 
 {
-   
-  // Capture the start time of cycle tasks
-  unsigned long t_start_tasks = millis();
-    
-  // Check if there is a byte in buffer reception from Serial Port
-  if (Serial.available() > 0)
+  
+  // Serial.print(order[0]);
+
+  // COMMAND V: WHEELS VELOCITY
+  if(order[0] == 'V')
   {
-    //Serial.readBytes(order, 1);
-    Serial.readBytesUntil('\0', order, 1);
-    // Every time a command is going to be reveived the error is reset if it's not asking for an error code
-    if (order[0] != "E")
-      type_error = NO_ERROR;
-        
-    // Analyze the order received in the buffer reception from Serial Port
-    // 'V': command velocity
-    // '?': stop and reset
-    // 'E': an error occur
-    // 'Q': send the incremental data encoder
-    // 'N': send the data encoder (abs count encoder)        
-    analyze_order(order[0]);
+    // Serial.print("Entrado a V");
+      
+    uint8_t velocity_right = read_speed(3);
+    uint8_t velocity_left =  read_speed(3);
+
+    // Check the value of velocity
+    if (velocity_right == 0 && velocity_left ==0)
+    {
+      // Stop the robot
+      state = STOP;          
+    } 
+
+    else
+    {      
+      // Refresh the state
+      state = MOVE;
+
+      // Check and refresh the global variable sel_action with the possible action from velocity received
+      sel_action = check_type_action(velocity_right, velocity_left);
+
+      // Update the pins control for L298N
+      select_sense_turning_motors(sel_action); 
+
+      // Normalize the velocities for wheels with the data received by Serial Port 
+      // and update the SetPoint for PID controller      
+      speed_normalization(velocity_right, velocity_left);
+    }
   }
-    
-  // Each state performs a different movement
-  switch (state)
+
+  // COMMAND ?: RESET 
+  else if (order[0] == '?')
   {
-    case RESET:      
-      // Just in case an error produced the movement of the motors
-      stop_motors();
-      // Reset the abs count value from encoders
-      MOT_R.encoderAbs = 0;
-      MOT_L.encoderAbs = 0;        
-    break;
+    // Serial.print("Entrado a Reset");  
+    stop_motors();
+    state = RESET;
+  }
 
-    case MOVE:
-      // Update the speeds
-      update_speeds_from_PID_controller(); 
-    break;
+  // COMMAND E: POSSIBLE ERROR OCCUR
+  else if (order[0] == 'E')
+  {
+    type_error = ERROR_CODE;
 
-    case STOP:
-      // Just in case an error produced the movement of the motors
-      stop_motors();
-    break;
+    Serial.write(0x45);  // 'E'
+    Serial.write(0x30 + type_error);
+    Serial.println("");
+  }
 
-    default:
-    break;
-  } // End of switch (STATE)
+  // COMMAND Q: PRINT THE COUNTER VALUE FROM ENCODERS
+  else if (order[0] == 'Q')
+  {
+    Serial.print("\nQ:");
+    Serial.print(MOT_L.encoderIZQ);
+    Serial.print(" ");
+    Serial.println(MOT_R.encoderDER);
+  }
 
-  // Delay
-  // This action avoid the effect of Jitter
-  // delay(PID_MOT_R.ts - (millis() - t_start_tasks));
-} // End of loop
+  // COMMAND N: SEND DATA FROM ABSOLUT ENCODERS
+  else if (order[0] == 'N')
+  {
+    // Serial.println("Command N");
+    send_data_encoder();
+  }
+  
+}  // End of analyze_order()
+
