@@ -43,24 +43,24 @@ typedef enum state{
 // Define the struct with the data from Right Motor
 typedef struct{
   int PPR = 713;                          // Pulses Per Revolution of Wheel
-  float max_velocity = 240.0;             // Max velocity in RPM
+  float max_velocity = 20.0;             // Max velocity in RPM
   unsigned long encoderDER = 0;           // Incremental value Encoder 
   long encoderAbs = 0;                    // Absolute counter encoder value
   unsigned long last_value_encoder = 0;   // Save the last value lecture of incremental encoder
   uint8_t max_speed_pwm = 127;            // Max speed for PWM with our encode 0..127
-  float duty_cycle_top_speed = 0.8;       // Duty for top speed for PWM
+  float duty_cycle_top_speed = 1.0;       // Duty for top speed for PWM
   long delta_encoder = 0;                 // Delta of pulses in sample time  
 }right_motor_t;
 
 // Define the struct with the data from Left Motor
 typedef struct{
   int PPR = 713;                          // Pulses Per Revolution of Wheel
-  float max_velocity = 240.0;             // Max velocity in RPM
+  float max_velocity = 20.0;             // Max velocity in RPM
   unsigned long encoderIZQ = 0;           // Incremental value Encoder
   long encoderAbs = 0;                    // Absolute counter encoder value
   unsigned long last_value_encoder = 0;   // Save the last value lecture of incremental encoder
   uint8_t max_speed_pwm = 127;            // Max speed for PWM with our encode 0..127
-  float duty_cycle_top_speed = 0.8;       // Duty for top speed for PWM
+  float duty_cycle_top_speed = 1.0;       // Duty for top speed for PWM
   long delta_encoder = 0;                 // Delta of pulses in sample time  
 }left_motor_t;
 
@@ -70,7 +70,7 @@ typedef struct{
   // SetPoint: is de reference value
   // Output: is the control value
   double Input, SetPoint, Output;
-  double Kp=0.7, Ki=0.5, Kd=0.7;
+  double Kp=0.7, Ki=0.007, Kd=0.7;
   // Limits of saturation
   double top_limit_sat = 255.0;
   double bottom_limit_sat = 0.0;
@@ -84,7 +84,7 @@ typedef struct{
   // SetPoint: is de reference value
   // Output: is the control value  
   double Input, SetPoint, Output;
-  double Kp=0.7, Ki=0.5, Kd=0.7;
+  double Kp=0.7, Ki=0.007, Kd=0.7;
   // Limits of saturation
   double top_limit_sat = 255.0;
   double bottom_limit_sat = 0.0;
@@ -97,7 +97,9 @@ action_t sel_action;
 
 error_t type_error;
 
-state_t state;
+state_t state = RESET;
+
+char order[0];
 
 // Variables with the mechanical data motors
 right_motor_t MOT_R;
@@ -155,7 +157,7 @@ void setup()
 
   // Init the serial port with a baudrate of 115200 baudios
   Serial.begin(115200);      
-  Serial.println("LOLA INI ");
+  Serial.println("LOLA INI");
 
 }  // End of setup()
 
@@ -165,7 +167,6 @@ void setup()
 void loop() 
 {
   // put your main code here, to run repeatedly:
-  state = RESET;
   Lola();
 }  // end of loop()
 
@@ -201,8 +202,8 @@ void select_sense_turning_motors(action_t type_action)
   {
     case FORWARD:
       // Sense turning for motor Right      
-      digitalWrite(MOT_R_A_PIN, HIGH);
-      digitalWrite(MOT_R_B_PIN, LOW);
+      digitalWrite(MOT_R_A_PIN, LOW);
+      digitalWrite(MOT_R_B_PIN, HIGH);
       // Sense turning for motor Left
       digitalWrite(MOT_L_A_PIN, LOW);
       digitalWrite(MOT_L_B_PIN, HIGH);
@@ -210,8 +211,8 @@ void select_sense_turning_motors(action_t type_action)
 
     case BACKWARD:
       // Sense turning for motor Right
-      digitalWrite(MOT_R_A_PIN, LOW);
-      digitalWrite(MOT_R_B_PIN, HIGH);
+      digitalWrite(MOT_R_A_PIN, HIGH);
+      digitalWrite(MOT_R_B_PIN, LOW);
       // Sense turning for motor Left
       digitalWrite(MOT_L_A_PIN, HIGH);
       digitalWrite(MOT_L_B_PIN, LOW);    
@@ -222,8 +223,8 @@ void select_sense_turning_motors(action_t type_action)
       digitalWrite(MOT_R_A_PIN, HIGH);
       digitalWrite(MOT_R_B_PIN, LOW);
       // Sense turning for motor Left
-      digitalWrite(MOT_L_A_PIN, HIGH);
-      digitalWrite(MOT_L_B_PIN, LOW);
+      digitalWrite(MOT_L_A_PIN, LOW);
+      digitalWrite(MOT_L_B_PIN, HIGH);
     break;
 
     case TURN_RIGHT:
@@ -231,8 +232,8 @@ void select_sense_turning_motors(action_t type_action)
       digitalWrite(MOT_R_A_PIN, LOW);
       digitalWrite(MOT_R_B_PIN, HIGH);
       // Sense turning for motor Left
-      digitalWrite(MOT_L_A_PIN, LOW);
-      digitalWrite(MOT_L_B_PIN, HIGH);
+      digitalWrite(MOT_L_A_PIN, HIGH);
+      digitalWrite(MOT_L_B_PIN, LOW);
     break;
   }  
 }  // End of select_sense_turning_motors(action_t type_action)
@@ -316,40 +317,19 @@ short int read_speed(int n_digits)
 
   // Wait 5 ms to be sure the bytes have arrived
   delay(5);
-  //  sprintf(speed,"%d",SERIA.available());
-  //  SERIA.println(speed);
-  if (digitalRead(SW5_PIN) == LOW) 
+
+  if (Serial.available() > n_digits - 1)
   {
-    if (Serial2.available() > n_digits - 1)
-    {
-      Serial2.readBytes(speed, n_digits);
-      speed[n_digits] = '\0';  // Append a NULL character to terminate the string! Not needed if initialized with char speed[5] = {0}...
+    Serial.readBytes(speed, n_digits);
+    speed[n_digits] = '\0';  // Append a NULL character to terminate the string! Not needed if initialized with char speed[5] = {0}...
 
-      return (uint8_t) atoi(speed);
-    }
-
-    else
-    {
-      type_error = NO_NUMBER;
-      return 0;
-    }
+    return (uint8_t) atoi(speed);
   }
 
-  else 
+  else
   {
-    if (Serial.available() > n_digits - 1)
-    {
-      Serial.readBytes(speed, n_digits);
-      speed[n_digits] = '\0';  // Append a NULL character to terminate the string! Not needed if initialized with char speed[5] = {0}...
-
-      return (uint8_t) atoi(speed);
-    }
-
-    else
-    {
-      type_error = NO_NUMBER;
-      return 0;
-    }
+    type_error = NO_NUMBER;
+    return 0;
   }
 }  // End of read_speed()
 
@@ -363,7 +343,8 @@ void analyze_order(char order)
 
   switch (order)
   {
-    case   'V':
+    case 'V':
+
       uint8_t velocity_right = read_speed(3);
       uint8_t velocity_left =  read_speed(3);
 
@@ -389,51 +370,47 @@ void analyze_order(char order)
         // and update the SetPoint for PID controller      
         speed_normalization(velocity_right, velocity_left); 
       }
+
     break;
 
     // Stop motors and calcucompute the new positions
     case '?': // '?'
       stop_motors();
+      Serial.print("Entrado a Reset");
       state = RESET;
     break;
 
     // The error is sent back by adding 0x30 to the error code
     case 'E': // 'E'
       type_error = ERROR_CODE;
-      
-      if (digitalRead(SW5_PIN) == LOW) {
-        Serial2.write(0x45);  // 'E'
-        Serial2.write(0x30 + type_error);
-        Serial2.println("");
-      }
-      else {
-        Serial.write(0x45);  // 'E'
-        Serial.write(0x30 + type_error);
-        Serial.println("");
-      }
+
+      Serial.write(0x45);  // 'E'
+      Serial.write(0x30 + type_error);
+      Serial.println("");
     break;
 
     case 'Q': // 'Q'
-      if (digitalRead(SW5_PIN) == LOW) {
-        Serial2.print("\nQ:");
-        Serial2.print(MOT_L.encoderIZQ);
-        Serial2.print(" ");
-        Serial2.println(MOT_R.encoderDER);
-      }
-      else {
-        Serial.print("\nQ:");
-        Serial.print(MOT_L.encoderIZQ);
-        Serial.print(" ");
-        Serial.println(MOT_R.encoderDER);
-      }
-      break;
+      
+      Serial.print("\nQ:");
+      Serial.print(MOT_L.encoderIZQ);
+      Serial.print(" ");
+      Serial.println(MOT_R.encoderDER);
+      
+    break;
 
     case 'N': //'N'    Datos de los encoders en valor absoluto
+
+      Serial.println("Entrar a N");
       send_data_encoder();
+    
     break;
 
     default:
+
+      Serial.print("Entrado a Default");
       type_error = NO_AVAILABLE;
+    
+    break;
   }
 }  // End of analyze_order()
 
@@ -519,6 +496,7 @@ void send_data_encoder(void)
   unsigned long tAabs = micros();
   unsigned long tBabs = micros();
   
+  /*
   byte_auxiliar[3] = (MOT_R.encoderAbs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (MOT_R.encoderAbs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (MOT_R.encoderAbs & 0x0000FF00) >> 8;
@@ -530,15 +508,17 @@ void send_data_encoder(void)
   //Serial.print("  ");
 
   Serial.write(byte_auxiliar, 4);
+  */
 
   //DEBUG
-  //Serial.print(" Dep EncoderIZDO: ");
-  //Serial.print(encoderAAbs);
-  //Serial.print("  ");
-  //Serial.print(" Tiempo Izdo: ");
-  //Serial.println(tAabs);
+  Serial.print(" Dep EncoderDCHA: ");
+  Serial.print(MOT_R.encoderAbs);
+  Serial.print("  ");
+  Serial.print(" Tiempo Dcha: ");
+  Serial.println(tAabs);
   // FIN DEBUG
 
+  /*
   byte_auxiliar[3] = (tAabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tAabs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (tAabs & 0x0000FF00) >> 8;
@@ -558,16 +538,18 @@ void send_data_encoder(void)
   byte_auxiliar[0] = (MOT_L.encoderAbs & 0x000000FF);
 
   Serial.write(byte_auxiliar, 4);
+  */
 
   //DEBUG
-  //Serial.print(" EncoderDCHO: ");
-  //Serial.print(encoderBAbs);
-  //Serial.print("  ");
-  //Serial.print(" Tiempo dcho: ");
-  //Serial.println(tBabs);
-  //Serial.print("  ");
+  Serial.print(" EncoderIZDA: ");
+  Serial.print(MOT_L.encoderAbs);
+  Serial.print("  ");
+  Serial.print(" Tiempo izda: ");
+  Serial.println(tBabs);
+  Serial.print("  ");
   // FIN DEBUG
 
+  /*
   byte_auxiliar[3] = (tBabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tBabs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (tBabs & 0x0000FF00) >> 8;
@@ -578,6 +560,8 @@ void send_data_encoder(void)
   //Serial.print("  Dep tBABS: ");
   //Serial.print(tBabs);
   // FIN DEBUG
+  */
+
   Serial.println("P");   ///// Se manda una 'P'
 
 }  // End of send_data_encoder
@@ -588,59 +572,54 @@ void send_data_encoder(void)
 ///////////////////////////////////////////
 void Lola(void)
 {
-
-  long t_start_tasks = 0;
-
-  while (1)
+   
+  // Capture the start time of cycle tasks
+  unsigned long t_start_tasks = millis();
+    
+  // Check if there is a byte in buffer reception from Serial Port
+  if (Serial.available() > 0)
   {
-    // Capture the start time of cycle tasks
-    t_start_tasks = millis();
-    
-    // Check if there is a byte in buffer reception from Serial Port
-    if (Serial.available() > 0)
-      {
-        char order[0] = "Z";
-        Serial.readBytes(order, 1);
-        // Every time a command is going to be reveived the error is reset if it's not asking for an error code
-        if (order[0] != "E")
-          type_error = NO_ERROR;
+    //Serial.readBytes(order, 1);
+    Serial.readBytesUntil('\0', order, 1);
+    // Every time a command is going to be reveived the error is reset if it's not asking for an error code
+    if (order[0] != "E")
+      type_error = NO_ERROR;
         
-        // Analyze the order received in the buffer reception from Serial Port
-        // 'V': command velocity
-        // '?': stop and reset
-        // 'E': an error occur
-        // 'Q': send the incremental data encoder
-        // 'N': send the data encoder (abs count encoder)        
-        analyze_order(order[0]);
-      }
+    // Analyze the order received in the buffer reception from Serial Port
+    // 'V': command velocity
+    // '?': stop and reset
+    // 'E': an error occur
+    // 'Q': send the incremental data encoder
+    // 'N': send the data encoder (abs count encoder)        
+    analyze_order(order[0]);
+  }
     
-    // Each state performs a different movement
-    switch (state)
-    {
-      case RESET:      
-        // Just in case an error produced the movement of the motors
-        stop_motors();
-        // Reset the abs count value from encoders
-        MOT_R.encoderAbs = 0;
-        MOT_L.encoderAbs = 0;        
-      break;
+  // Each state performs a different movement
+  switch (state)
+  {
+    case RESET:      
+      // Just in case an error produced the movement of the motors
+      stop_motors();
+      // Reset the abs count value from encoders
+      MOT_R.encoderAbs = 0;
+      MOT_L.encoderAbs = 0;        
+    break;
 
-      case MOVE:
-        // Update the speeds
-        update_speeds_from_PID_controller(); 
-      break;
+    case MOVE:
+      // Update the speeds
+      update_speeds_from_PID_controller(); 
+    break;
 
-      case STOP:
-        // Just in case an error produced the movement of the motors
-        stop_motors();
-      break;
+    case STOP:
+      // Just in case an error produced the movement of the motors
+      stop_motors();
+    break;
 
-      default:
-      break;
-    } // End of switch (STATE)
+    default:
+    break;
+  } // End of switch (STATE)
 
-    // Delay
-    // This action avoid the effect of Jitter
-    delay(PID_MOT_R.ts - (millis() - t_start_tasks));
-  } // End of while(1)
+  // Delay
+  // This action avoid the effect of Jitter
+  // delay(PID_MOT_R.ts - (millis() - t_start_tasks));
 } // End of loop
