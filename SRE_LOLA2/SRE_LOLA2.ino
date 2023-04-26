@@ -115,9 +115,9 @@ PID PID_L(&PID_MOT_L.Input, &PID_MOT_L.Output, &PID_MOT_L.SetPoint, PID_MOT_L.Kp
 ////////////////////
 void setup() 
 { 
-  // Add the interrupt lines for encoders -> active for rising edge
-  attachInterrupt(digitalPinToInterrupt(MOT_R_ENC_B_PIN), right_encoder_IRQHandler, RISING);
-  attachInterrupt(digitalPinToInterrupt(MOT_L_ENC_B_PIN), left_encoder_IRQHandler, RISING);
+  // Add the interrupt lines for encoders -> active for change state
+  attachInterrupt(digitalPinToInterrupt(MOT_R_ENC_B_PIN), right_encoder_IRQHandler, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(MOT_L_ENC_B_PIN), left_encoder_IRQHandler, CHANGE);
 
   // Set the mode of controllers PID
   PID_R.SetMode(AUTOMATIC);
@@ -155,7 +155,7 @@ void setup()
 
   // Init the serial port with a baudrate of 115200 baudios
   Serial.begin(115200);      
-  Serial.println("LOLA INI");
+  Serial.print("LOLA INI ");
 
 }  // End of setup()
 
@@ -193,9 +193,13 @@ void loop()
     case RESET:      
       // Just in case an error produced the movement of the motors
       stop_motors();
-      // Reset the abs count value from encoders
-      MOT_R.encoderAbs = 0;
-      MOT_L.encoderAbs = 0;        
+      // Reset the abs and relative count value from encoders
+      // MOT_R.encoderDER = 0;
+      // MOT_R.encoderAbs = 0;
+      // MOT_R.last_value_encoder = 0;
+      // MOT_L.encoderIZQ = 0;
+      // MOT_L.encoderAbs = 0;
+      // MOT_L.last_value_encoder = 0;        
     break;
 
     case MOVE:
@@ -214,7 +218,7 @@ void loop()
 
   // Delay
   // This action avoid the effect of Jitter
-  delay(PID_MOT_R.ts - (millis() - t_start_tasks));
+  // delay(PID_MOT_R.ts - (millis() - t_start_tasks));
 
 }  // end of loop()
 
@@ -268,20 +272,20 @@ void select_sense_turning_motors(action_t type_action)
 
     case TURN_LEFT:
       // Sense turning for motor Right
-      digitalWrite(MOT_R_A_PIN, HIGH);
-      digitalWrite(MOT_R_B_PIN, LOW);
-      // Sense turning for motor Left
-      digitalWrite(MOT_L_A_PIN, LOW);
-      digitalWrite(MOT_L_B_PIN, HIGH);
-    break;
-
-    case TURN_RIGHT:
-      // Sense turning for motor Right
       digitalWrite(MOT_R_A_PIN, LOW);
       digitalWrite(MOT_R_B_PIN, HIGH);
       // Sense turning for motor Left
       digitalWrite(MOT_L_A_PIN, HIGH);
       digitalWrite(MOT_L_B_PIN, LOW);
+    break;
+
+    case TURN_RIGHT:
+      // Sense turning for motor Right
+      digitalWrite(MOT_R_A_PIN, HIGH);
+      digitalWrite(MOT_R_B_PIN, LOW);
+      // Sense turning for motor Left
+      digitalWrite(MOT_L_A_PIN, LOW);
+      digitalWrite(MOT_L_B_PIN, HIGH);
     break;
   }  
 }  // End of select_sense_turning_motors(action_t type_action)
@@ -403,6 +407,7 @@ void update_speeds_from_PID_controller(void)
   PID_R.Compute();
   PID_L.Compute();
 
+  /*
   // DEBUG SERIAL PLOTTER
   Serial.print("Max:");
   Serial.print(255);
@@ -418,6 +423,7 @@ void update_speeds_from_PID_controller(void)
   Serial.print(", ");
   Serial.print("Output_Right:");
   Serial.println(PID_MOT_R.Output);
+  */
 
   // Write, as PWM duty cycles, the speeds for each wheel
   analogWrite(MOT_R_PWM_PIN, PID_MOT_R.Output);
@@ -480,7 +486,7 @@ void send_data_encoder(void)
   unsigned long tAabs = micros();
   unsigned long tBabs = micros();
   
-  /*
+  
   // Data from Right Encoder
   byte_auxiliar[3] = (MOT_R.encoderAbs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (MOT_R.encoderAbs & 0x00FF0000) >> 16;
@@ -516,9 +522,9 @@ void send_data_encoder(void)
   Serial.write(byte_auxiliar, 4);
 
   Serial.println("P");   // Se manda una 'P'
-  */
-
   
+
+  /*
   //DEBUG
   // Data from Right Encoder
   Serial.print("EncoderDCHA: ");
@@ -534,6 +540,7 @@ void send_data_encoder(void)
   Serial.print("Tiempo izda: ");
   Serial.println(tBabs);
   // FIN DEBUG
+  */
 
 }  // End of send_data_encoder
 
