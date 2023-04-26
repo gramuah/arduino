@@ -25,9 +25,9 @@ unsigned long tr,tl;
 volatile unsigned long auxr=0,auxl=0;
 // Variables to keep each encoder pulse
 volatile unsigned int encoderIZQ = 0, encoderDER = 0;
-unsigned int aux_encoderIZQ = 0, aux_encoderDER = 0;
+//unsigned int aux_encoderIZQ = 0, aux_encoderDER = 0;
 
-volatile signed int encoder = 0;
+//volatile signed int encoder = 0;
 // Indicate the PWM that is applied to the motors
 unsigned int SPEED_INI_L=255;  // 170
 unsigned int SPEED_INI_R=255;  // 100
@@ -36,7 +36,7 @@ unsigned int SPEED_INI_R_LIM=255;  // 100
 int velr = SPEED_INI_R;
 int vell = SPEED_INI_L;
 int error = 0;
-int encoder_ant;
+//int encoder_ant;
 // FSM's STATES
 unsigned char STATE = 0;
 #define RESET_STATE          0
@@ -201,9 +201,9 @@ void move_motors()
   unsigned int inhib_r = 0xBB, inhib_l = 0xEE;
 
   // When starting reset all the encoders
-  //encoderIZQ =  aux_encoderIZQ ;
-  //encoderDER =  aux_encoderDER;   
-  encoder = encoder_ant = 0;
+//  encoderIZQ =  aux_encoderIZQ ;
+//  encoderDER =  aux_encoderDER;   
+//  encoder = encoder_ant = 0;
 
   //Deactivate both motor's H-bridge
   PORTA &= 0xAA;
@@ -521,61 +521,28 @@ void actualizar_encoder_abs()
 {
   if (dir_left == 0)
   {
-    /*
     encoderIZQ_aux_can = (long)encoderIZQ_aux_can - (long)encoderIZQ;
     encoderAAbs = (long)encoderAAbs + (long)encoderIZQ_aux_can;
     encoderIZQ_aux_can = encoderIZQ;
-    */
-
-    encoderIZQ_aux_can = (long)encoderIZQ - (long)encoderIZQ_aux_can;
-    encoderAAbs = (long)encoderAAbs - (long)encoderIZQ_aux_can;
-    encoderIZQ_aux_can = (long)encoderIZQ;
-
   }
   else
   {
-    /* 
     encoderIZQ_aux_can = (long)encoderIZQ_aux_can - (long)encoderIZQ;
     encoderAAbs = (long)encoderAAbs - (long)encoderIZQ_aux_can;
     encoderIZQ_aux_can = encoderIZQ;
-    */
-    encoderIZQ_aux_can = (long)encoderIZQ - (long)encoderIZQ_aux_can;
-    encoderAAbs = (long)encoderAAbs + (long)encoderIZQ_aux_can;
-    encoderIZQ_aux_can = (long)encoderIZQ;
   }
   if (dir_right == 0)
   {
-    /*
     encoderDER_aux_can = (long)encoderDER_aux_can - (long)encoderDER;
     encoderBAbs = (long)encoderBAbs + (long)encoderDER_aux_can;
-    encoderDER_aux_can = encoderDER;
-    */
-    encoderDER_aux_can = (long)encoderDER - (long)encoderDER_aux_can;
-    encoderBAbs = (long)encoderBAbs - (long)encoderDER_aux_can;
     encoderDER_aux_can = encoderDER;
   }
   else
   {
-    /*
     encoderDER_aux_can = (long)encoderDER_aux_can - (long)encoderDER;
     encoderBAbs = (long)encoderBAbs - (long)encoderDER_aux_can;
     encoderDER_aux_can = encoderDER;
-    */
-
-    encoderDER_aux_can = (long)encoderDER - (long)encoderDER_aux_can;
-    encoderBAbs = (long)encoderBAbs + (long)encoderDER_aux_can;
-    encoderDER_aux_can = encoderDER;
   }
-
-  /*
-  // DEBUG PULSOS ENCODERS
-  Serial.print("EncoderIZDO:");
-  Serial.print(encoderAAbs);
-  Serial.print(", ");
-  Serial.print("EncoderDCHO: ");
-  Serial.println(encoderBAbs);
-  */
-
 }  // fin actualizar_encoder_abs
 
 ///////////////////////////////////////////
@@ -685,8 +652,7 @@ void enviar_datos_encoder()
   actualizar_encoder_abs();
   tAabs = micros();
   tBabs = micros();
-  
-  
+
   byte_auxiliar[3] = (encoderAAbs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (encoderAAbs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (encoderAAbs & 0x0000FF00) >> 8;
@@ -698,19 +664,15 @@ void enviar_datos_encoder()
   //Serial.print("  ");
 
   Serial.write(byte_auxiliar, 4);
-  
-  
-  /*
-  //DEBUG
-  Serial.print(" Dep EncoderIZDO: ");
-  Serial.print(encoderAAbs);
-  Serial.print("  ");
-  Serial.print(" Tiempo Izdo: ");
-  Serial.println(tAabs);
-  // FIN DEBUG
-  */
 
-  
+   //DEBUG
+  //Serial.print("Dep EncoderIZDO: ");
+  //Serial.print(encoderAAbs);
+  //Serial.print("  ");
+  //Serial.print(" Tiempo Izdo: ");
+  //Serial.println(tAabs);
+    // FIN DEBUG
+
   byte_auxiliar[3] = (tAabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tAabs & 0x00FF0000) >> 16;
   byte_auxiliar[1] = (tAabs & 0x0000FF00) >> 8;
@@ -731,18 +693,14 @@ void enviar_datos_encoder()
 
   Serial.write(byte_auxiliar, 4);
 
-
-/*
-//DEBUG
-Serial.print(" EncoderDCHO: ");
-Serial.print(encoderBAbs);
-Serial.print("  ");
-Serial.print(" Tiempo dcho: ");
-Serial.println(tBabs);
-Serial.print("  ");
-// FIN DEBUG
-*/
-
+  //DEBUG
+  //Serial.print(" EncoderDCHO: ");
+  //Serial.print(encoderBAbs);
+  //Serial.print("  ");
+  //Serial.print(" Tiempo dcho: ");
+  //Serial.println(tBabs);
+  //Serial.print("  ");
+ // FIN DEBUG
 
   byte_auxiliar[3] = (tBabs & 0xFF000000) >> 24;
   byte_auxiliar[2] = (tBabs & 0x00FF0000) >> 16;
@@ -754,7 +712,6 @@ Serial.print("  ");
   //Serial.print("  Dep tBABS: ");
   //Serial.print(tBabs);
   // FIN DEBUG
-
   Serial.println("P");   ///// Se manda una 'P'
 
 }  //// Fin enviar los datos de los encoders
@@ -784,9 +741,6 @@ void Lola()
       case   RESET_STATE:      
         // Just in case an error produced the movement of the motors
         stop_motors();
-        encoderIZQ = 0, encoderDER = 0;
-        encoderIZQ_aux_can = 0, encoderDER_aux_can = 0;
-        encoderAAbs = 0, encoderBAbs = 0;
         break;
       case MOVE_DIF_SPEED:
         auxiliar_uns_int=(int)((float)SPEED_INI_L*1.1);
@@ -798,6 +752,9 @@ void Lola()
             
         // PID for speeds update
         update_speeds(0);
+        // Prueba para ver si se arregla lo de los signos
+//        aux_encoderDER = encoderDER;
+//        aux_encoderIZQ = encoderIZQ;
         break;
       default:
         break;
