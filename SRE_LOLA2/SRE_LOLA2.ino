@@ -524,7 +524,7 @@ void send_data_encoder(void)
   Serial.println("P");   // Se manda una 'P'
   
 
-  /*
+  
   //DEBUG
   // Data from Right Encoder
   Serial.print("EncoderDCHA: ");
@@ -540,7 +540,7 @@ void send_data_encoder(void)
   Serial.print("Tiempo izda: ");
   Serial.println(tBabs);
   // FIN DEBUG
-  */
+  
 
 }  // End of send_data_encoder
 
